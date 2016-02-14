@@ -5,7 +5,7 @@ import std.file;
 import std.conv;
 import gl3n.linalg;
 
-mixin template Transformation2D()
+private mixin template Transformation2D()
 {
 	/// Transformation matrix
 	mat3 transformation = mat3.identity;

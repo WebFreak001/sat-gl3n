@@ -1,6 +1,7 @@
 {
 	"name": "sat-gl3n",
-	"description": "A Separating Axis theorem implementation based on gl3n",
+	"description": "A Separating Axis theorem implementation based on gl3n (convex shape collision detection)",
+	"license": "MIT",
 	"copyright": "Copyright © 2016, webfreak",
 	"authors": [
 		"webfreak"
