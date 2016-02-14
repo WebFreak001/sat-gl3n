@@ -1,0 +1,11 @@
+{
+	"name": "sat-gl3n",
+	"description": "A Separating Axis theorem implementation based on gl3n",
+	"copyright": "Copyright © 2016, webfreak",
+	"authors": [
+		"webfreak"
+	],
+	"dependencies": {
+		"gl3n": "~>1.3.1"
+	}
+}
