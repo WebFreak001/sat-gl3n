@@ -248,6 +248,22 @@ unittest
 	//dfmt on
 }
 
+/// Checks for an intersection between two circles
+bool intersects(in Circle a, in Circle b) @safe nothrow pure
+{
+	return (a.position - b.position).length_squared < (a.radius + b.radius) * (a.radius + b.radius);
+}
+
+unittest
+{
+	// circle <> circle
+	//dfmt off
+	assert(intersects(Circle(1, vec2(0, 0)), Circle(1, vec2(0.5f, 0.5f))));
+	assert(intersects(Circle(1, vec2(0, 0)), Circle(1, vec2(1, 1))));
+	assert(!intersects(Circle(1, vec2(0, 0)), Circle(1, vec2(2, 1))));
+	//dfmt on
+}
+
 /// Projects a polygon onto an axis.
 /// Returns: [mininum, maximum]
 Tuple!(float, "min", float, "max") project(in Polygon poly, vec2 axis) @safe nothrow pure
