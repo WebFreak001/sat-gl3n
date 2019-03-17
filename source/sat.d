@@ -1,9 +1,11 @@
 module sat;
 
-import std.typecons;
-import std.file;
-import std.conv;
 import gl3n.linalg;
+import std.conv;
+import std.file;
+import std.range;
+import std.math : cos, sin;
+import std.typecons;
 
 private mixin template Transformation2D()
 {
@@ -70,56 +72,100 @@ struct Polygon
 	mixin Transformation2D;
 
 	/// Generates the normals for all vertices
-	vec2[] normals() @property @safe const nothrow pure
-	in
+	auto normals() @property @safe const nothrow pure @nogc
+	in(vertices.length > 2, "Any polygon must have at least 3 vertices")
 	{
-		assert(vertices.length > 2, "Any polygon must have at least 3 vertices");
+		return .normals(vertices, transformation);
 	}
-	body
-	{
-		vec2[] norms;
-		norms.reserve(vertices.length);
-		for (int i = 0; i < vertices.length - 1; i++)
+}
+
+/// Generates normals of a 2D shape on the fly
+struct Normals(Vertices)
+{
+	Vertices vertices;
+	vec2 first, last;
+	mat3 transformation;
+	bool didLast;
+
+	static if (isForwardRange!Vertices)
+		auto save()
 		{
-			const a = (transformation * vec3(vertices[i + 1], 1)).xy;
-			const b = (transformation * vec3(vertices[i], 1)).xy;
-			norms ~= vec2(b.y - a.y, a.x - b.x).normalized;
+			return Normals!Vertices(vertices.save, first, last);
 		}
-		const a = (transformation * vec3(vertices[0], 1)).xy;
-		const b = (transformation * vec3(vertices[$ - 1], 1)).xy;
-		norms ~= vec2(b.y - a.y, a.x - b.x).normalized;
-		return norms;
+
+	static if (hasLength!Vertices)
+		auto length() @property const
+		{
+			return vertices.length;
+		}
+
+	void popFront()
+	{
+		if (vertices.empty && !didLast)
+			didLast = true;
+		else
+		{
+			last = vertices.front;
+			vertices.popFront;
+		}
 	}
+
+	bool empty() @property const
+	{
+		return vertices.empty && didLast;
+	}
+
+	vec2 front() @property const @safe
+	{
+		vec2 a;
+		if (vertices.empty)
+			a = (transformation * vec3(first, 1)).xy;
+		else
+			a = (transformation * vec3(vertices.front, 1)).xy;
+		const b = (transformation * vec3(last, 1)).xy;
+		return vec2(b.y - a.y, a.x - b.x).normalized;
+	}
+}
+
+Normals!Vertices normals(Vertices)(Vertices vertices, mat3 transformation) @safe nothrow pure @nogc
+{
+	Normals!Vertices ret;
+	ret.vertices = vertices;
+	ret.first = ret.last = vertices.front;
+	ret.transformation = transformation;
+	vertices.popFront;
+	ret.popFront;
+	return ret;
 }
 
 /// Creates an axis aligned rectangle as polygon.
 Polygon rectangleAABB(vec2 center, vec2 halfDimensions) @safe nothrow pure
 {
-	return Polygon([center + vec2(halfDimensions.x, halfDimensions.y),
-		center + vec2(halfDimensions.x, -halfDimensions.y),
-		center + vec2(-halfDimensions.x, -halfDimensions.y),
-		center + vec2(-halfDimensions.x, halfDimensions.y)]);
+	return Polygon([
+			center + vec2(halfDimensions.x, halfDimensions.y),
+			center + vec2(halfDimensions.x, -halfDimensions.y),
+			center + vec2(-halfDimensions.x, -halfDimensions.y),
+			center + vec2(-halfDimensions.x, halfDimensions.y)
+			]);
 }
 
 /// Checks for an intersection between two polygons
-bool intersects(in Polygon a, in Polygon b) @safe nothrow pure
+bool intersects(in Polygon a, in Polygon b) @safe nothrow pure @nogc
 {
-	const anorms = a.normals;
-	const bnorms = b.normals;
 	Tuple!(float, "min", float, "max") rangeA;
 	Tuple!(float, "min", float, "max") rangeB;
 	int i;
-	for (i = 0; i < anorms.length; i++)
+	foreach (norm; a.normals)
 	{
-		rangeA = project(a, anorms[i]);
-		rangeB = project(b, anorms[i]);
+		rangeA = project(a, norm);
+		rangeB = project(b, norm);
 		if (rangeA.max < rangeB.min || rangeB.max < rangeA.min)
 			return false;
 	}
-	for (i = 0; i < bnorms.length; i++)
+	foreach (norm; b.normals)
 	{
-		rangeA = project(a, bnorms[i]);
-		rangeB = project(b, bnorms[i]);
+		rangeA = project(a, norm);
+		rangeB = project(b, norm);
 		if (rangeA.max < rangeB.min || rangeB.max < rangeA.min)
 			return false;
 	}
@@ -201,7 +247,7 @@ unittest
 }
 
 /// Checks for an intersection between a polygon and a circle
-bool intersects(in Polygon a, in Circle b) @safe nothrow pure
+bool intersects(in Polygon a, in Circle b) @safe nothrow pure @nogc
 {
 	Tuple!(float, "min", float, "max") rangeA;
 	Tuple!(float, "min", float, "max") rangeB;
@@ -214,11 +260,10 @@ bool intersects(in Polygon a, in Circle b) @safe nothrow pure
 		if (rangeA.max < rangeB.min || rangeB.max < rangeA.min)
 			return false;
 	}
-	const anorms = a.normals;
-	for (i = 0; i < anorms.length; i++)
+	foreach (norm; a.normals)
 	{
-		rangeA = project(a, anorms[i]);
-		rangeB = project(b, anorms[i]);
+		rangeA = project(a, norm);
+		rangeB = project(b, norm);
 		if (rangeA.max < rangeB.min || rangeB.max < rangeA.min)
 			return false;
 	}
@@ -226,7 +271,7 @@ bool intersects(in Polygon a, in Circle b) @safe nothrow pure
 }
 
 /// ditto
-bool intersects(in Circle b, in Polygon a) @safe nothrow pure
+bool intersects(in Circle b, in Polygon a) @safe nothrow pure @nogc
 {
 	return intersects(a, b);
 }
@@ -249,7 +294,7 @@ unittest
 }
 
 /// Checks for an intersection between two circles
-bool intersects(in Circle a, in Circle b) @safe nothrow pure
+bool intersects(in Circle a, in Circle b) @safe nothrow pure @nogc
 {
 	return (a.position - b.position).length_squared < (a.radius + b.radius) * (a.radius + b.radius);
 }
@@ -266,7 +311,7 @@ unittest
 
 /// Projects a polygon onto an axis.
 /// Returns: [mininum, maximum]
-Tuple!(float, "min", float, "max") project(in Polygon poly, vec2 axis) @safe nothrow pure
+Tuple!(float, "min", float, "max") project(in Polygon poly, vec2 axis) @safe nothrow pure @nogc
 {
 	float min = (poly.transformation * vec3(poly.vertices[0], 1)).xy.dot(axis);
 	float max = (poly.transformation * vec3(poly.vertices[0], 1)).xy.dot(axis);
@@ -286,7 +331,7 @@ Tuple!(float, "min", float, "max") project(in Polygon poly, vec2 axis) @safe not
 
 /// Projects a polygon onto an axis.
 /// Returns: [mininum, maximum]
-Tuple!(float, "min", float, "max") project(in Circle circle, vec2 axis) @safe nothrow pure
+Tuple!(float, "min", float, "max") project(in Circle circle, vec2 axis) @safe nothrow pure @nogc
 in
 {
 	assert(circle.radius > 0, "A circle must have a positive radius");
